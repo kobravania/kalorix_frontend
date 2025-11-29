@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import WebApp from '@twa-dev/sdk'
+import { initTelegramMock } from '../utils/telegramMock'
 
 const themeParamToCSSVar: Record<string, string> = {
   bg_color: '--tg-bg',
@@ -11,6 +12,11 @@ const themeParamToCSSVar: Record<string, string> = {
 
 export const useTelegramInit = () => {
   useEffect(() => {
+    // Если Telegram WebApp не доступен, инициализируем мок для разработки
+    if (!window.Telegram?.WebApp) {
+      initTelegramMock()
+    }
+
     const telegramApp = window.Telegram?.WebApp ?? WebApp
     if (!telegramApp) {
       return

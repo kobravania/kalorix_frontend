@@ -1,7 +1,5 @@
-import { Suspense } from 'react'
 import { AppProviders } from './providers/AppProviders'
 import { AppRouter } from './router/AppRouter'
-import { LoadingScreen } from './components/common/LoadingScreen'
 import { useTelegramInit } from './hooks/useTelegramInit'
 
 const App = () => {
@@ -9,9 +7,7 @@ const App = () => {
 
   return (
     <AppProviders>
-      <Suspense fallback={<LoadingScreen message="Загружаем Kalorix..." />}>
-        <AppRouter />
-      </Suspense>
+      <AppRouter />
     </AppProviders>
   )
 }

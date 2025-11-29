@@ -6,10 +6,15 @@ import { AddFoodPage } from '../pages/AddFoodPage'
 import { StatsPage } from '../pages/StatsPage'
 import { ProfilePage } from '../pages/ProfilePage'
 import { OnboardingPage } from '../pages/OnboardingPage'
+import { RegistrationPage } from '../pages/RegistrationPage'
 
 const router = createBrowserRouter([
   {
     path: '/',
+    element: <Navigate to="/onboarding" replace />,
+  },
+  {
+    path: '/home',
     element: (
       <RequireAuth>
         <HomePage />
@@ -53,8 +58,12 @@ const router = createBrowserRouter([
     element: <OnboardingPage />,
   },
   {
+    path: '/registration',
+    element: <RegistrationPage />,
+  },
+  {
     path: '*',
-    element: <Navigate to="/" replace />,
+    element: <Navigate to="/onboarding" replace />,
   },
 ])
 

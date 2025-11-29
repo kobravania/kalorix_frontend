@@ -1,5 +1,5 @@
 import {
-  ReactNode,
+  type ReactNode,
   createContext,
   useCallback,
   useContext,
@@ -10,7 +10,7 @@ import {
 import { authorizeWithTelegram } from '../api/auth'
 import { getUserProfile } from '../api/user'
 import { setAuthToken } from '../api/client'
-import { UserProfile } from '../types/api'
+import type { UserProfile } from '../types/api'
 
 const TOKEN_STORAGE_KEY = 'kalorix_token'
 
@@ -22,6 +22,7 @@ type AuthContextValue = {
   status: AuthStatus
   error: string | null
   authenticate: (initData?: string) => Promise<void>
+  setUser: (user: UserProfile) => void
   logout: () => void
   refreshProfile: () => Promise<void>
 }
@@ -66,9 +67,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setStatus('loading')
         const telegramInitData =
           initData ?? window.Telegram?.WebApp?.initData ?? 'mock_init_data'
-        const { token: apiToken } = await authorizeWithTelegram(telegramInitData)
-        persistToken(apiToken)
-        await refreshProfile()
+        const { user: userData } = await authorizeWithTelegram(telegramInitData)
+        // Сохраняем пользователя напрямую (бэкенд не возвращает токен)
+        setUser(userData)
+        setStatus('authenticated')
+        setError(null)
       } catch (err) {
         console.error('Авторизация не удалась', err)
         setStatus('error')
@@ -76,8 +79,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw err
       }
     },
-    [persistToken, refreshProfile],
+    [],
   )
+
+  const setUserData = useCallback((userData: UserProfile) => {
+    setUser(userData)
+    setStatus('authenticated')
+    setError(null)
+  }, [])
 
   const logout = useCallback(() => {
     persistToken(null)
@@ -102,10 +111,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       status,
       error,
       authenticate,
+      setUser: setUserData,
       logout,
       refreshProfile,
     }),
-    [token, user, status, error, authenticate, logout, refreshProfile],
+    [token, user, status, error, authenticate, setUserData, logout, refreshProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
