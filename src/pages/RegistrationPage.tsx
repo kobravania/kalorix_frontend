@@ -1,27 +1,17 @@
-import { FormEvent, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../components/layout/AppLayout'
 import { registerUser, RegisterUserPayload } from '../api/user'
 import { useAuth } from '../context/AuthContext'
-import { Goal } from '../types/api'
 
-const goalOptions: Array<{ id: Goal; title: string }> = [
-  { id: 'loss', title: 'Похудение' },
-  { id: 'maintain', title: 'Поддержание' },
-  { id: 'gain', title: 'Набор' },
-]
-
-const activityOptions: Array<{ id: 'low' | 'medium' | 'high'; title: string }> = [
-  { id: 'low', title: 'Низкая' },
-  { id: 'medium', title: 'Средняя' },
-  { id: 'high', title: 'Высокая' },
-]
+type RegistrationStep = 'gender' | 'height' | 'birthdate' | 'weight'
 
 export const RegistrationPage = () => {
   const navigate = useNavigate()
-  const { authenticate } = useAuth()
+  const { user, setUser } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [step, setStep] = useState<RegistrationStep>('gender')
 
   // Получаем ID пользователя из Telegram
   const getUserId = (): string => {
@@ -33,27 +23,76 @@ export const RegistrationPage = () => {
     return `user_${Date.now()}`
   }
 
-  const [formData, setFormData] = useState<RegisterUserPayload>({
+  const [formData, setFormData] = useState<{
+    userId: string
+    gender?: 'male' | 'female'
+    height?: number
+    birthdate?: string
+    weight?: number
+    activity: 'low' | 'medium' | 'high'
+    goal: 'loss' | 'maintain' | 'gain'
+  }>({
     userId: getUserId(),
-    firstName: '',
-    lastName: '',
-    age: 25,
-    weight: 70,
-    height: 175,
+    gender: undefined,
+    height: undefined,
+    birthdate: undefined,
+    weight: undefined,
     activity: 'medium',
     goal: 'maintain',
   })
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const calculateAge = (birthdate: string): number => {
+    const today = new Date()
+    const birth = new Date(birthdate)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age
+  }
+
+  const handleNext = () => {
+    setError(null)
+    if (step === 'gender' && formData.gender) {
+      setStep('height')
+    } else if (step === 'height' && formData.height) {
+      setStep('birthdate')
+    } else if (step === 'birthdate' && formData.birthdate) {
+      setStep('weight')
+    } else if (step === 'weight' && formData.weight) {
+      handleSubmit()
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!formData.gender || !formData.height || !formData.birthdate || !formData.weight) {
+      setError('Пожалуйста, заполните все поля')
+      return
+    }
+
     setError(null)
     setLoading(true)
 
     try {
-      await registerUser(formData)
-      // После регистрации авторизуем пользователя
-      await authenticate()
-      navigate('/profile')
+      const age = calculateAge(formData.birthdate)
+      const firstName = user?.firstName || window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name || 'Пользователь'
+      const lastName = user?.lastName || window.Telegram?.WebApp?.initDataUnsafe?.user?.last_name
+
+      const payload: RegisterUserPayload = {
+        userId: formData.userId,
+        firstName,
+        lastName,
+        age,
+        weight: formData.weight!,
+        height: formData.height!,
+        activity: formData.activity,
+        goal: formData.goal,
+      }
+
+      const registeredUser = await registerUser(payload)
+      setUser(registeredUser)
+      navigate('/home')
     } catch (err) {
       setError('Ошибка регистрации. Попробуйте снова.')
       console.error(err)
@@ -62,141 +101,138 @@ export const RegistrationPage = () => {
     }
   }
 
-  return (
-    <AppLayout>
-      <h1 className="text-2xl font-bold mb-2">Регистрация</h1>
-      <p className="text-gray-500 mb-6">Заполните данные для создания профиля</p>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">Имя *</label>
-          <input
-            type="text"
-            required
-            value={formData.firstName}
-            onChange={(e) =>
-              setFormData({ ...formData, firstName: e.target.value })
-            }
-            className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Ваше имя"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">Фамилия</label>
-          <input
-            type="text"
-            value={formData.lastName}
-            onChange={(e) =>
-              setFormData({ ...formData, lastName: e.target.value })
-            }
-            className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Ваша фамилия"
-          />
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-2">Возраст *</label>
-            <input
-              type="number"
-              required
-              min="10"
-              max="100"
-              value={formData.age}
-              onChange={(e) =>
-                setFormData({ ...formData, age: Number(e.target.value) })
-              }
-              className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+  const renderStep = () => {
+    switch (step) {
+      case 'gender':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-center mb-8">Ваш пол?</h2>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setFormData({ ...formData, gender: 'male' })
+                  setTimeout(() => handleNext(), 300)
+                }}
+                className={`w-full px-6 py-4 rounded-2xl border text-lg transition-colors ${
+                  formData.gender === 'male'
+                    ? 'bg-blue-500 border-blue-500 text-white'
+                    : 'bg-white/10 border-white/20'
+                }`}
+              >
+                Мужской
+              </button>
+              <button
+                onClick={() => {
+                  setFormData({ ...formData, gender: 'female' })
+                  setTimeout(() => handleNext(), 300)
+                }}
+                className={`w-full px-6 py-4 rounded-2xl border text-lg transition-colors ${
+                  formData.gender === 'female'
+                    ? 'bg-blue-500 border-blue-500 text-white'
+                    : 'bg-white/10 border-white/20'
+                }`}
+              >
+                Женский
+              </button>
+            </div>
           </div>
+        )
 
-          <div>
-            <label className="block text-sm font-medium mb-2">Вес (кг) *</label>
+      case 'height':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-center mb-8">Ваш рост (см)?</h2>
             <input
               type="number"
-              required
+              min="100"
+              max="250"
+              value={formData.height || ''}
+              onChange={(e) => setFormData({ ...formData, height: Number(e.target.value) })}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && formData.height) {
+                  handleNext()
+                }
+              }}
+              className="w-full px-6 py-4 rounded-2xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl"
+              placeholder="175"
+              autoFocus
+            />
+            <button
+              onClick={handleNext}
+              disabled={!formData.height}
+              className="w-full bg-blue-500 text-white py-4 rounded-2xl font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Далее
+            </button>
+          </div>
+        )
+
+      case 'birthdate':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-center mb-8">Дата рождения?</h2>
+            <input
+              type="date"
+              value={formData.birthdate || ''}
+              onChange={(e) => setFormData({ ...formData, birthdate: e.target.value })}
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full px-6 py-4 rounded-2xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+              autoFocus
+            />
+            <button
+              onClick={handleNext}
+              disabled={!formData.birthdate}
+              className="w-full bg-blue-500 text-white py-4 rounded-2xl font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Далее
+            </button>
+          </div>
+        )
+
+      case 'weight':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-center mb-8">Ваш вес (кг)?</h2>
+            <input
+              type="number"
               min="30"
               max="200"
               step="0.1"
-              value={formData.weight}
-              onChange={(e) =>
-                setFormData({ ...formData, weight: Number(e.target.value) })
-              }
-              className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2">Рост (см) *</label>
-            <input
-              type="number"
-              required
-              min="100"
-              max="250"
-              value={formData.height}
-              onChange={(e) =>
-                setFormData({ ...formData, height: Number(e.target.value) })
-              }
-              className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">Активность *</label>
-          <div className="grid grid-cols-3 gap-2">
-            {activityOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() =>
-                  setFormData({ ...formData, activity: option.id })
+              value={formData.weight || ''}
+              onChange={(e) => setFormData({ ...formData, weight: Number(e.target.value) })}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && formData.weight) {
+                  handleSubmit()
                 }
-                className={`px-4 py-2 rounded-xl border transition-colors ${
-                  formData.activity === option.id
-                    ? 'bg-blue-500 border-blue-500 text-white'
-                    : 'bg-white/10 border-white/20'
-                }`}
-              >
-                {option.title}
-              </button>
-            ))}
+              }}
+              className="w-full px-6 py-4 rounded-2xl bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl"
+              placeholder="70"
+              autoFocus
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!formData.weight || loading}
+              className="w-full bg-blue-500 text-white py-4 rounded-2xl font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Регистрация...' : 'Завершить'}
+            </button>
           </div>
+        )
+    }
+  }
+
+  return (
+    <AppLayout>
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="rounded-3xl bg-white/10 backdrop-blur-sm p-8 max-w-md w-full border border-white/20">
+          {error && (
+            <div className="text-red-400 text-sm mb-4 bg-red-500/20 p-3 rounded-xl text-center">
+              {error}
+            </div>
+          )}
+          {renderStep()}
         </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">Цель *</label>
-          <div className="space-y-2">
-            {goalOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => setFormData({ ...formData, goal: option.id })}
-                className={`w-full px-4 py-3 rounded-xl border text-left transition-colors ${
-                  formData.goal === option.id
-                    ? 'bg-blue-500 border-blue-500 text-white'
-                    : 'bg-white/10 border-white/20'
-                }`}
-              >
-                {option.title}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && (
-          <div className="text-red-500 text-sm text-center">{error}</div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading || !formData.firstName}
-          className="w-full bg-blue-500 text-white py-3 rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Регистрация...' : 'Зарегистрироваться'}
-        </button>
-      </form>
+      </div>
     </AppLayout>
   )
 }
