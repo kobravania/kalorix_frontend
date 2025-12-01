@@ -37,7 +37,7 @@ export const authorizeWithTelegram = async (
   }
 
   try {
-    const response = await apiClient.post<UserProfile>('/auth/telegram', {
+    const response = await apiClient.post<UserProfile>('/auth/telegram/', {
       initData,
     })
 

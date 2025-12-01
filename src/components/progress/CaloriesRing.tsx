@@ -55,3 +55,4 @@ export const CaloriesRing = ({ consumed, target }: CaloriesRingProps) => {
   )
 }
 
+
