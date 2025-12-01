@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../components/layout/AppLayout'
 import { authorizeWithTelegram } from '../api/auth'
 import { useAuth } from '../context/AuthContext'
@@ -8,14 +8,12 @@ type OnboardingStep = 'welcome' | 'license'
 
 export const OnboardingPage = () => {
   const navigate = useNavigate()
-  const location = useLocation()
   const { setUser, user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [step, setStep] = useState<OnboardingStep>('welcome')
   const [licenseAccepted, setLicenseAccepted] = useState(false)
   const hasAuthenticated = useRef(false)
-  const authKey = 'onboarding_auth_attempted'
 
   // Получаем initData из Telegram WebApp
   const getInitData = (): string => {
@@ -40,91 +38,45 @@ export const OnboardingPage = () => {
     return `user=${userParam}&auth_date=${authDate}&hash=${mockHash}`
   }
 
-  // Автоматическая аутентификация при загрузке страницы
+  // Проверяем, если пользователь уже авторизован, перенаправляем
   useEffect(() => {
-    // Проверяем, что мы все еще на странице онбординга
-    if (location.pathname !== '/onboarding') {
-      return
-    }
-
-    // Проверяем, была ли уже выполнена авторизация в этой сессии
-    if (sessionStorage.getItem(authKey)) {
-      return
-    }
-
-    let isMounted = true
-    let isAuthenticating = false
-
-    // Если пользователь уже авторизован, перенаправляем
     if (user) {
       navigate('/home')
-      return () => {
-        isMounted = false
-      }
     }
+  }, [user, navigate])
 
+  const handleStart = async () => {
     // Предотвращаем множественные вызовы
-    if (hasAuthenticated.current || loading || isAuthenticating) {
-      return () => {
-        isMounted = false
-      }
+    if (hasAuthenticated.current || loading) {
+      return
     }
 
-    const authenticate = async () => {
-      if (!isMounted || hasAuthenticated.current || isAuthenticating) {
-        return
+    hasAuthenticated.current = true
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Отправляем фейковые данные на бэкенд
+      const initData = getInitData()
+      const { user: userData, created } = await authorizeWithTelegram(initData)
+      
+      setUser(userData)
+
+      if (!created) {
+        // Пользователь уже зарегистрирован - сразу на главное меню
+        navigate('/home')
+      } else {
+        // Пользователь новый - показываем лицензионное соглашение
+        setStep('license')
       }
-
-      hasAuthenticated.current = true
-      isAuthenticating = true
-      sessionStorage.setItem(authKey, 'true') // Помечаем, что авторизация начата
-      setLoading(true)
-      setError(null)
-
-      try {
-        const initData = getInitData()
-        const { user: userData, created } = await authorizeWithTelegram(initData)
-        
-        if (!isMounted) {
-          return
-        }
-
-        setUser(userData)
-
-        if (!created) {
-          // Пользователь уже зарегистрирован - сразу на главное меню
-          navigate('/home')
-        }
-        // Если пользователь новый, остаемся на странице онбординга
-      } catch (err: any) {
-        if (!isMounted) {
-          return
-        }
-        sessionStorage.removeItem(authKey) // Удаляем флаг при ошибке для повторной попытки
-        hasAuthenticated.current = false // Разрешаем повторную попытку при ошибке
-        isAuthenticating = false
-        const errorMessage = err.message || 'Ошибка при авторизации. Попробуйте снова.'
-        setError(errorMessage)
-        console.error('Ошибка авторизации:', err)
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-          isAuthenticating = false
-        }
-      }
+    } catch (err: any) {
+      hasAuthenticated.current = false // Разрешаем повторную попытку при ошибке
+      const errorMessage = err.message || 'Ошибка при авторизации. Попробуйте снова.'
+      setError(errorMessage)
+      console.error('Ошибка авторизации:', err)
+    } finally {
+      setLoading(false)
     }
-
-    authenticate()
-
-    // Cleanup функция
-    return () => {
-      isMounted = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname])
-
-  const handleStart = () => {
-    setStep('license')
   }
 
   const handleContinue = () => {
